@@ -4,9 +4,17 @@ set -euo pipefail
 APP_NAME="concord"
 INSTALL_DIR="${CONCORD_HOME:-"$HOME/.concord"}"
 VENV_DIR="$INSTALL_DIR/.venv"
-PACKAGE_URL="${CONCORD_PACKAGE_URL:-"https://concord.slate.ceo/packages/concord_agent_memory-0.1.2.tar.gz"}"
+PACKAGE_URL="${CONCORD_PACKAGE_URL:-"https://concord.slate.ceo/packages/concord_agent_memory-0.1.3.tar.gz"}"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+TMP_DIR=""
+
+cleanup() {
+  if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
+    rm -rf "$TMP_DIR"
+  fi
+}
+trap cleanup EXIT
 
 log() {
   printf '%s\n' "$*"
@@ -37,14 +45,14 @@ install_package() {
   mkdir -p "$INSTALL_DIR" "$INSTALL_DIR/logs"
   chmod 700 "$INSTALL_DIR" "$INSTALL_DIR/logs"
 
-  uv venv "$VENV_DIR"
+  uv venv --allow-existing "$VENV_DIR"
 
   if [ -n "$PACKAGE_URL" ]; then
     require_cmd curl
-    tmp_pkg="$(mktemp -t concord.XXXXXX.tar.gz)"
+    TMP_DIR="$(mktemp -d -t concord.XXXXXX)"
+    tmp_pkg="$TMP_DIR/concord.tar.gz"
     curl -fsSL "$PACKAGE_URL" -o "$tmp_pkg"
     uv pip install --python "$VENV_DIR/bin/python" "$tmp_pkg"
-    rm -f "$tmp_pkg"
   elif [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
     uv pip install --python "$VENV_DIR/bin/python" "$SCRIPT_DIR"
   else
