@@ -271,16 +271,18 @@ def random_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_urlsafe(18).replace('-', '_')}"
 
 
-def connect(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+def connect(db_path: str, timeout: float = 5.0) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
 def setup_db(db_path: str) -> None:
     with connect(db_path) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS teams (
@@ -474,6 +476,8 @@ def ingest_transcript(config: ServerConfig, payload: dict[str, Any]) -> dict[str
     sha256 = require_str(transcript, "sha256")
     previous_offset = int(transcript.get("previous_offset", 0) or 0)
     next_offset = int(transcript.get("next_offset", 0) or 0)
+    source_delta_id = 0
+    stored = False
     with connect(config.db_path) as conn:
         cursor = conn.execute(
             """
@@ -502,11 +506,14 @@ def ingest_transcript(config: ServerConfig, payload: dict[str, Any]) -> dict[str
         )
         stored = cursor.rowcount == 1
         if stored:
+            source_delta_id = int(cursor.lastrowid)
+    if stored:
+        with connect(config.db_path) as conn:
             mine_procedures_for_delta(
                 conn,
                 config=config,
                 team_id=team_id,
-                source_delta_id=int(cursor.lastrowid),
+                source_delta_id=source_delta_id,
                 cli=payload.get("cli") if isinstance(payload.get("cli"), str) else None,
                 session_id=payload.get("session_id") if isinstance(payload.get("session_id"), str) else None,
                 cwd=payload.get("cwd") if isinstance(payload.get("cwd"), str) else None,
@@ -1392,27 +1399,30 @@ def query_advice(config: ServerConfig, payload: dict[str, Any]) -> dict[str, Any
                 for hit in hits
             ],
         }
-    with connect(config.db_path) as conn:
-        conn.execute(
-            """
-            INSERT INTO advice_queries (
-              team_id, install_id, hostname, cli, session_id, hook_event_name,
-              cwd, prompt, transcript_tail, advice
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                team_id,
-                payload.get("install_id"),
-                payload.get("hostname"),
-                payload.get("cli"),
-                payload.get("session_id"),
-                payload.get("hook_event_name"),
-                cwd,
-                prompt,
-                transcript_tail,
-                advice,
-            ),
-        )
+    try:
+        with connect(config.db_path, timeout=0.25) as conn:
+            conn.execute(
+                """
+                INSERT INTO advice_queries (
+                  team_id, install_id, hostname, cli, session_id, hook_event_name,
+                  cwd, prompt, transcript_tail, advice
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    team_id,
+                    payload.get("install_id"),
+                    payload.get("hostname"),
+                    payload.get("cli"),
+                    payload.get("session_id"),
+                    payload.get("hook_event_name"),
+                    cwd,
+                    prompt,
+                    transcript_tail,
+                    advice,
+                ),
+            )
+    except sqlite3.OperationalError:
+        pass
     return response
 
 
@@ -1509,6 +1519,8 @@ class ConcordHandler(BaseHTTPRequestHandler):
             self.write_json(429, {"ok": False, "error": str(exc)})
         except (BadRequest, json.JSONDecodeError, ValueError) as exc:
             self.write_json(400, {"ok": False, "error": str(exc)})
+        except sqlite3.OperationalError:
+            self.write_json(503, {"ok": False, "error": "database temporarily busy"})
 
 
 def config_from_env(args: argparse.Namespace) -> ServerConfig:

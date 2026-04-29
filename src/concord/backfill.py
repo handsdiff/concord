@@ -93,7 +93,10 @@ def backfill_transcripts(
                     "content": delta.content,
                 },
             }
-            active_client.ingest_transcript_delta(payload)
+            if client is None:
+                active_client.ingest_transcript_delta(payload, attempts=3)
+            else:
+                active_client.ingest_transcript_delta(payload)
             commit_transcript_delta(state, delta)
             chunks += 1
             file_chunks += 1

@@ -1,6 +1,6 @@
 [project]
 name = "concord-agent-memory"
-version = "0.1.3"
+version = "0.1.4"
 description = "Collaborative memory for coding agents using transcript hooks and hosted advice."
 requires-python = ">=3.10"
 

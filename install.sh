@@ -4,7 +4,7 @@ set -euo pipefail
 APP_NAME="concord"
 INSTALL_DIR="${CONCORD_HOME:-"$HOME/.concord"}"
 VENV_DIR="$INSTALL_DIR/.venv"
-PACKAGE_URL="${CONCORD_PACKAGE_URL:-"https://concord.slate.ceo/packages/concord_agent_memory-0.1.3.tar.gz"}"
+PACKAGE_URL="${CONCORD_PACKAGE_URL:-"https://concord.slate.ceo/packages/concord_agent_memory-0.1.4.tar.gz"}"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 TMP_DIR=""
