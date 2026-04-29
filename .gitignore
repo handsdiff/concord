@@ -1,0 +1,35 @@
+# Local runtime state and secrets
+server.env
+.env
+.env.*
+!.env.example
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.db-shm
+*.db-wal
+logs/
+*.log
+
+# Python/build artifacts
+__pycache__/
+*.py[cod]
+.python-version
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Tool caches and reports
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor/OS noise
+.DS_Store
+*.swp
+*.tmp

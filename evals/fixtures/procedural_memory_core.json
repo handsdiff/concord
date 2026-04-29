@@ -1,0 +1,228 @@
+{
+  "transcripts": [
+    {
+      "session_id": "procedural-service-ops",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/concord",
+      "source": "/home/niyant/.codex/sessions/2026/04/28/rollout-2026-04-28T12-44-58-019dd4fa-ca33-7300-a9fe-c94ad39aff47.jsonl:3026",
+      "lines": [
+        {
+          "timestamp": "2026-04-28T20:20:00Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Procedure: for hosted services on this machine, read `../hermes-provisioner/README.md` Service operations; use user systemd via `systemctl --user`; keep unit files in `/opt/spice/prod/config/systemd`; update nginx in `/opt/spice/prod/config/nginx-sf1.conf`; read logs with `journalctl _SYSTEMD_USER_UNIT=...`."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "procedural-container-recreate",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/devops",
+      "source": "/home/niyant/.codex/sessions/2026/04/03/rollout-2026-04-03T10-54-38-019d53d6-c7d9-7bb3-96ba-1f17d5ba2a75.jsonl:6399",
+      "lines": [
+        {
+          "timestamp": "2026-04-05T23:56:40Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Procedure: for ActiveClaw containers, read `../devops/README.md`; build the shared image once with `docker build --no-cache -t activeclaw:latest .`; recreate the target with `docker compose -p brain --env-file brain.env up -d --force-recreate`; then smoke test the live runtime."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "procedural-discord-bot-pool",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "source": "/home/niyant/.codex/sessions/2026/04/26/rollout-2026-04-26T10-18-35-019dca28-0c77-7dd0-bae6-aebab205d148.jsonl:6",
+      "lines": [
+        {
+          "timestamp": "2026-04-26T14:19:00Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Procedure: before changing Hermes Discord bot provisioning, read the README, repo markdown, and Claude memory; inspect `agents.db` and `bot_pool`; use `seed_discord_bot_pool.py` to add fresh available bots instead of disturbing assigned bot slots."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "procedural-slate1-litellm",
+      "cli": "claude",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "source": "/opt/spice/prod/hermes-provisioner/README.md:54",
+      "lines": [
+        {
+          "type": "assistant",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Procedure: for cheap lightweight inference, use the slate-1 LiteLLM integration documented in `../hermes-provisioner/README.md`; provisioned agents reach it as `litellm-1.int.exe.xyz`, with credentials injected by exe.dev integrations rather than stored locally."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "procedural-live-vm-truth",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "source": "/home/niyant/.codex/memories/MEMORY.md:18",
+      "lines": [
+        {
+          "timestamp": "2026-04-26T17:49:27Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Procedure: for Hermes runtime failures, treat the live VM as the source of truth; if normal SSH fails, use `ssh -F /dev/null <vm>.exe.xyz`; inspect remote files such as `/home/exedev/.hermes/config.yaml` instead of inferring from the control host."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "procedural-sibling-repo",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "source": "/home/niyant/.codex/memories/MEMORY.md:184",
+      "lines": [
+        {
+          "timestamp": "2026-04-24T23:10:05Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Procedure: when working in `hermes-provisioner` but the runtime behavior belongs to Hermes itself, inspect and patch sibling repo `../hermes-agent` rather than staying in the provisioner checkout."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "procedural-activeclaw-release",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/hub",
+      "source": "/home/niyant/.codex/memories/MEMORY.md:378",
+      "lines": [
+        {
+          "timestamp": "2026-04-05T21:31:27Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Procedure: for Hub or ActiveClaw compatibility and npm release questions, inspect neighboring repo `/opt/spice/prod/activeclaw`; use the repo-specific release path with `pnpm plugins:sync`, build/check/test, `release:check`, and manual `npm publish` rather than generic npm advice."
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "injects_service_ops_before_hosting_work",
+      "cwd": "/opt/spice/prod/concord",
+      "prompt": "Add the Concord server as a hosted service on this machine and configure nginx.",
+      "expect_advice": true,
+      "must_include": ["../hermes-provisioner/README.md", "systemctl --user", "/opt/spice/prod/config/systemd", "/opt/spice/prod/config/nginx-sf1.conf"],
+      "prompt_must_not_include": ["README", "systemctl --user", "/opt/spice/prod/config/systemd"],
+      "category": "procedural_memory"
+    },
+    {
+      "name": "injects_container_recreate_flow",
+      "cwd": "/opt/spice/prod/devops",
+      "prompt": "Recreate the brain container after rebuilding ActiveClaw.",
+      "expect_advice": true,
+      "must_include": ["../devops/README.md", "activeclaw:latest", "docker compose -p brain --env-file brain.env"],
+      "prompt_must_not_include": ["README", "docker compose", "brain.env"],
+      "category": "procedural_memory"
+    },
+    {
+      "name": "injects_docs_memory_for_bot_provisioning",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "prompt": "Add fresh bot keys so new Hermes users can onboard.",
+      "expect_advice": true,
+      "must_include": ["README", "Claude memory", "bot_pool", "seed_discord_bot_pool.py"],
+      "prompt_must_not_include": ["README", "Claude memory", "bot_pool", "seed_discord_bot_pool.py"],
+      "category": "procedural_memory"
+    },
+    {
+      "name": "injects_litellm_slate1_hint",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "prompt": "Use a lightweight model for recursive transcript mining.",
+      "expect_advice": true,
+      "must_include": ["slate-1", "litellm-1.int.exe.xyz", "../hermes-provisioner/README.md"],
+      "prompt_must_not_include": ["slate-1", "litellm-1", "README"],
+      "category": "procedural_memory"
+    },
+    {
+      "name": "procedural_memory_stays_silent_for_plain_ui_work",
+      "cwd": "/opt/spice/prod/concord",
+      "prompt": "Adjust the dashboard button spacing.",
+      "expect_advice": false,
+      "category": "procedural_memory"
+    },
+    {
+      "name": "injects_live_vm_truth",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "prompt": "Diagnose why Sal Hermes chat is failing on startup.",
+      "expect_advice": true,
+      "must_include": ["live VM", "ssh -F /dev/null", "/home/exedev/.hermes/config.yaml"],
+      "prompt_must_not_include": ["ssh -F", "/home/exedev/.hermes/config.yaml", "live VM"],
+      "category": "procedural_memory"
+    },
+    {
+      "name": "injects_sibling_repo_ownership",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "prompt": "Fix the Hermes actor context runtime behavior from here.",
+      "expect_advice": true,
+      "must_include": ["../hermes-agent", "rather than staying in the provisioner checkout"],
+      "prompt_must_not_include": ["../hermes-agent", "sibling repo"],
+      "category": "procedural_memory"
+    },
+    {
+      "name": "injects_activeclaw_release_path",
+      "cwd": "/opt/spice/prod/hub",
+      "prompt": "Can we publish the Hub client changes for ActiveClaw?",
+      "expect_advice": true,
+      "must_include": ["/opt/spice/prod/activeclaw", "pnpm plugins:sync", "release:check", "manual npm publish"],
+      "prompt_must_not_include": ["pnpm plugins:sync", "release:check", "/opt/spice/prod/activeclaw"],
+      "category": "procedural_memory"
+    }
+  ]
+}

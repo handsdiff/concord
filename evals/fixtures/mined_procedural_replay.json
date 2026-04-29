@@ -1,0 +1,135 @@
+{
+  "transcripts": [
+    {
+      "session_id": "raw-replay-devops-readme-container",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/devops",
+      "source": "/home/niyant/.codex/sessions/2026/04/03/rollout-2026-04-03T10-54-38-019d53d6-c7d9-7bb3-96ba-1f17d5ba2a75.jsonl:6092",
+      "lines": [
+        {
+          "timestamp": "2026-04-05T22:15:00Z",
+          "type": "event_msg",
+          "payload": {
+            "type": "user_message",
+            "message": "can you upgrade testy to the new version and ensure he still can talk to you and also access and message on hub properly?"
+          }
+        },
+        {
+          "timestamp": "2026-04-05T22:15:30Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "I will restart the container and check it."}]
+          }
+        },
+        {
+          "timestamp": "2026-04-05T22:16:30Z",
+          "type": "event_msg",
+          "payload": {
+            "type": "user_message",
+            "message": "read the readme to know how to properly recreate containers with proper envs"
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "raw-replay-concord-service-memory",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/concord",
+      "source": "/home/niyant/.codex/sessions/2026/04/28/rollout-2026-04-28T12-44-58-019dd4fa-ca33-7300-a9fe-c94ad39aff47.jsonl:2959",
+      "lines": [
+        {
+          "timestamp": "2026-04-28T22:40:00Z",
+          "type": "event_msg",
+          "payload": {
+            "type": "user_message",
+            "message": "i want to write the server in a server folder in concord that implements what the client expects, that i can host. make sense?"
+          }
+        },
+        {
+          "timestamp": "2026-04-28T22:41:00Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "I can add the server folder."}]
+          }
+        },
+        {
+          "timestamp": "2026-04-28T22:46:01Z",
+          "type": "event_msg",
+          "payload": {
+            "type": "user_message",
+            "message": "hmmm, do you see the instructions for running services on this machine? check the md artifacts and memory from ../hermes-provisioner and let me know"
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "raw-replay-memory-files-logs",
+      "cli": "claude",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "source": "/home/niyant/.claude/projects/-opt-spice-prod-hermes-provisioner/f4b592cc-bbbf-4035-a395-d400ca6b1a2b.jsonl:849",
+      "lines": [
+        {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": "do you remember how previous testing runs were tested? which specific features and ways to test? it was a 6 step process that should be in memory"
+          }
+        },
+        {
+          "type": "assistant",
+          "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "I do not have the exact prior testing process in context."}]
+          }
+        },
+        {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": "check memory files and logs"
+          }
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "mines_container_recreate_instruction_from_raw_user_correction",
+      "cwd": "/opt/spice/prod/devops",
+      "prompt": "Upgrade testy to the new version and ensure it can still talk on Hub.",
+      "expect_advice": true,
+      "must_include": ["recreating containers", "Docker Compose", "env-file"],
+      "prompt_must_not_include": ["README", "Docker Compose", "env-file"],
+      "category": "raw_procedural_replay"
+    },
+    {
+      "name": "mines_service_ops_instruction_from_raw_user_correction",
+      "cwd": "/opt/spice/prod/concord",
+      "prompt": "Add the Concord server as a hosted service on this machine and configure nginx.",
+      "expect_advice": true,
+      "must_include": ["../hermes-provisioner", "systemd", "nginx", "journalctl"],
+      "prompt_must_not_include": ["../hermes-provisioner", "systemd", "journalctl"],
+      "category": "raw_procedural_replay"
+    },
+    {
+      "name": "mines_memory_files_instruction_from_raw_user_correction",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "prompt": "How were previous testing runs tested?",
+      "expect_advice": true,
+      "must_include": ["repo-local Claude/Codex memory files", "historical sessions"],
+      "prompt_must_not_include": ["memory files", "historical sessions"],
+      "category": "raw_procedural_replay"
+    },
+    {
+      "name": "raw_procedural_replay_stays_silent_for_dashboard_spacing",
+      "cwd": "/opt/spice/prod/concord",
+      "prompt": "Adjust the dashboard button spacing.",
+      "expect_advice": false,
+      "category": "raw_procedural_replay"
+    }
+  ]
+}

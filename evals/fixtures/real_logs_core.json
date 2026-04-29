@@ -1,0 +1,124 @@
+{
+  "transcripts": [
+    {
+      "session_id": "raw-codex-bot-pool",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "source": "/home/niyant/.codex/sessions/2026/04/26/rollout-2026-04-26T10-18-35-019dca28-0c77-7dd0-bae6-aebab205d148.jsonl:127",
+      "lines": [
+        {
+          "timestamp": "2026-04-26T14:20:20.249Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "The local `agents.db` confirms the operational problem: `bot_pool` has 12 bots and all 12 are `assigned`; there are currently zero `available` rows for new onboarding."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "raw-claude-wait4test",
+      "cli": "claude",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "source": "/home/niyant/.claude/projects/-opt-spice-prod-hermes-provisioner/67ad281d-0d1e-4ccb-a7c0-ec109756507b.jsonl:104",
+      "lines": [
+        {
+          "type": "assistant",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "wait4test verified: config parses, resolver returns 256k for both slate-1 and slate-3, hermes restarted cleanly. Ready to roll to the 10 live VMs. Rollout plan per VM: back up config.yaml, insert context_length: 256000 under the model block, then sudo systemctl restart hermes."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "raw-claude-honcho-failure",
+      "cli": "claude",
+      "cwd": "/opt/spice/prod/hermes-agent",
+      "source": "/home/niyant/.claude/projects/-opt-spice-prod-hermes-agent/78990f06-c01f-47ec-972e-af5e587f669d.jsonl:142",
+      "lines": [
+        {
+          "type": "assistant",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Honcho's synthesized natural-language beliefs about the user have the exact linguistic shape of a prompt injection: text outside the direct user message that makes assertions about the user and reads like instructions. For Hermes, prefer a raw scoped event log or fenced state packet before turning Honcho back on."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "raw-codex-transcript-boundary",
+      "cli": "codex",
+      "cwd": "/opt/spice/prod/concord",
+      "source": "/home/niyant/.codex/sessions/2026/04/28/rollout-2026-04-28T12-44-58-019dd4fa-ca33-7300-a9fe-c94ad39aff47.jsonl:1031",
+      "lines": [
+        {
+          "timestamp": "2026-04-28T16:30:00.000Z",
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "The repo should pivot from local trace observability to transcript ingestion and backend-backed transcript QA. Remove OTLP tracing from the core path; store transcript deltas that preserve chronological message and tool-call content."
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "raw_codex_bot_pool_gate",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "prompt": "New Discord onboarding is blocked; what should I inspect first?",
+      "expect_advice": true,
+      "must_include": ["bot_pool", "available rows"]
+    },
+    {
+      "name": "raw_claude_wait4test_canary",
+      "cwd": "/opt/spice/prod/hermes-provisioner",
+      "prompt": "Before rolling a Hermes context length change to live VMs, what canary should I use?",
+      "expect_advice": true,
+      "must_include": ["wait4test", "context_length"]
+    },
+    {
+      "name": "raw_claude_honcho_failure_mode",
+      "cwd": "/opt/spice/prod/hermes-agent",
+      "prompt": "Should I turn Honcho back on for Hermes memory?",
+      "expect_advice": true,
+      "must_include": ["prompt injection", "raw scoped event log"]
+    },
+    {
+      "name": "raw_codex_transcripts_not_traces",
+      "cwd": "/opt/spice/prod/concord",
+      "prompt": "Should Concord store traces or transcripts for chronological tool call history?",
+      "expect_advice": true,
+      "must_include": ["transcript ingestion", "chronological message and tool-call content"]
+    },
+    {
+      "name": "raw_logs_irrelevant_silence",
+      "cwd": "/opt/spice/prod/hermes-agent",
+      "prompt": "Pick a restaurant for dinner near the office",
+      "expect_advice": false
+    }
+  ]
+}
