@@ -1031,8 +1031,9 @@ def mine_existing_procedures(
             """,
             params,
         ).fetchall()
-        added = 0
-        for row in rows:
+    added = 0
+    for row in rows:
+        with connect(config.db_path) as conn:
             added += mine_procedures_for_delta(
                 conn,
                 config=config,
