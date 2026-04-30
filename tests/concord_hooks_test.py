@@ -52,6 +52,19 @@ def test_transcript_delta_cursor() -> None:
         assert first.content == '{"a":1}\n'
 
 
+def test_capped_live_delta_reports_tail_offset() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        transcript = root / "session.jsonl"
+        transcript.write_text('{"a":1}\n{"b":2}\n{"c":3}\n', encoding="utf-8")
+        state: dict = {}
+        delta = read_transcript_delta(str(transcript), state, max_bytes=10)
+        assert delta is not None
+        assert delta.previous_offset == transcript.stat().st_size - 10
+        assert delta.next_offset == transcript.stat().st_size
+        assert len(delta.content.encode("utf-8")) == 10
+
+
 def test_post_turn_upload_commits_cursor() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
@@ -156,6 +169,30 @@ def test_backfill_uploads_existing_transcripts_once() -> None:
         assert len(client.ingested) >= 2
 
 
+def test_backfill_chunks_preserve_jsonl_boundaries() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        config = make_config(root / "home")
+        sessions = root / ".codex" / "sessions"
+        sessions.mkdir(parents=True)
+        transcript = sessions / "session.jsonl"
+        transcript.write_text(
+            '{"content":"first line with enough text"}\n'
+            '{"content":"second line with enough text"}\n'
+            '{"content":"third line with enough text"}\n',
+            encoding="utf-8",
+        )
+        client = FakeClient()
+
+        result = backfill_transcripts(config, roots=[sessions], client=client, chunk_bytes=10)
+        assert result["chunks"] == 3
+        for payload in client.ingested:
+            content = payload["transcript"]["content"]
+            assert content.endswith("\n")
+            for line in content.splitlines():
+                json.loads(line)
+
+
 def test_install_bootstraps_missing_credentials_without_printing_token() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
@@ -230,13 +267,15 @@ def test_install_starts_background_backfill_by_default() -> None:
 
 def main() -> None:
     test_transcript_delta_cursor()
+    test_capped_live_delta_reports_tail_offset()
     test_post_turn_upload_commits_cursor()
     test_pre_turn_advice_output()
     test_hook_installers_merge_without_overwrite()
     test_backfill_uploads_existing_transcripts_once()
+    test_backfill_chunks_preserve_jsonl_boundaries()
     test_install_bootstraps_missing_credentials_without_printing_token()
     test_install_starts_background_backfill_by_default()
-    print(json.dumps({"ok": True, "tests": 7}, indent=2, sort_keys=True))
+    print(json.dumps({"ok": True, "tests": 9}, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

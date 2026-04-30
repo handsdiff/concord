@@ -47,7 +47,7 @@ def read_transcript_delta(path: str, state: dict[str, Any], max_bytes: int = 2_0
     return TranscriptDelta(
         path=str(transcript_path),
         key=key,
-        previous_offset=previous_offset,
+        previous_offset=read_start,
         next_offset=size,
         content=content,
         sha256=hashlib.sha256(raw).hexdigest(),
@@ -71,11 +71,14 @@ def iter_transcript_deltas(
     size = transcript_path.stat().st_size
     if start < 0 or start > size:
         start = 0
+    chunk_bytes = max(1, int(chunk_bytes))
     deltas: list[TranscriptDelta] = []
     with transcript_path.open("rb") as handle:
         while start < size:
             handle.seek(start)
             raw = handle.read(min(chunk_bytes, size - start))
+            if start + len(raw) < size and not raw.endswith(b"\n"):
+                raw += handle.readline()
             next_offset = start + len(raw)
             deltas.append(
                 TranscriptDelta(

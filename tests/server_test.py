@@ -4,11 +4,22 @@ import json
 import sqlite3
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
 
-from server.main import ConcordHTTPServer, ServerConfig, hash_token, setup_db
+from server.main import (
+    ConcordHTTPServer,
+    ProcedureMiner,
+    ServerConfig,
+    hash_token,
+    ingest_transcript,
+    llm_consolidate_artifacts,
+    mine_existing_procedures,
+    setup_db,
+)
 
 
 def post_json(url: str, token: str | None, payload: dict) -> tuple[int, dict]:
@@ -43,6 +54,15 @@ def head_raw(url: str) -> tuple[int, bytes]:
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
+
+
+def wait_until(predicate, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+    assert predicate()
 
 
 def test_serves_installer_assets() -> None:
@@ -88,9 +108,10 @@ def test_ingest_and_advice_query() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         db_path = str(Path(temp_dir) / "server.sqlite3")
         setup_db(db_path)
+        config = ServerConfig(db_path=db_path, team_tokens={"token-a": "team-a"}, loose_tokens=set())
         server = ConcordHTTPServer(
             ("127.0.0.1", 0),
-            ServerConfig(db_path=db_path, team_tokens={"token-a": "team-a"}, loose_tokens=set()),
+            config,
         )
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -121,6 +142,7 @@ def test_ingest_and_advice_query() -> None:
 
             status, body = post_json(f"{base_url}/v1/transcripts/ingest", "wrong-token", ingest_payload)
             assert status == 401, body
+            assert mine_existing_procedures(config)["procedures_added"] == 1
 
             advice_payload = {
                 "team_id": "team-a",
@@ -196,11 +218,151 @@ def test_bootstrap_issues_scoped_hashed_token() -> None:
             thread.join(timeout=5)
 
 
+def test_ingest_queues_procedure_mining() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = str(Path(temp_dir) / "server.sqlite3")
+        setup_db(db_path)
+        config = ServerConfig(db_path=db_path, team_tokens={}, loose_tokens=set())
+
+        content = '{"role":"assistant","content":"Procedure: preserve hook config when editing install scripts"}\n'
+        result = ingest_transcript(
+            config,
+            {
+                "team_id": "team-a",
+                "install_id": "install-1",
+                "hostname": "host",
+                "cli": "codex",
+                "session_id": "queued",
+                "hook_event_name": "Backfill",
+                "cwd": "/repo",
+                "transcript_path": "/native/queued.jsonl",
+                "transcript": {
+                    "path_hash": "hash-queued",
+                    "previous_offset": 0,
+                    "next_offset": len(content),
+                    "sha256": "sha-queued",
+                    "content": content,
+                },
+            },
+        )
+        assert result == {"ok": True, "stored": True}
+        with sqlite3.connect(db_path) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM procedures").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM procedure_sources").fetchone()[0] == 0
+        assert mine_existing_procedures(config)["procedures_added"] == 1
+        with sqlite3.connect(db_path) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM procedures").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM procedure_sources").fetchone()[0] == 1
+
+
+def test_background_miner_processes_queued_transcripts() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = str(Path(temp_dir) / "server.sqlite3")
+        setup_db(db_path)
+        config = ServerConfig(db_path=db_path, team_tokens={}, loose_tokens=set())
+        content = '{"role":"assistant","content":"Procedure: preserve hook config when editing install scripts"}\n'
+        ingest_transcript(
+            config,
+            {
+                "team_id": "team-a",
+                "install_id": "install-1",
+                "hostname": "host",
+                "cli": "codex",
+                "session_id": "background",
+                "hook_event_name": "Backfill",
+                "cwd": "/repo",
+                "transcript_path": "/native/background.jsonl",
+                "transcript": {
+                    "path_hash": "hash-background",
+                    "previous_offset": 0,
+                    "next_offset": len(content),
+                    "sha256": "sha-background",
+                    "content": content,
+                },
+            },
+        )
+        miner = ProcedureMiner(config, batch_size=1, poll_seconds=0.01)
+        miner.start()
+        try:
+            wait_until(lambda: sqlite3.connect(db_path).execute("SELECT COUNT(*) FROM procedures").fetchone()[0] == 1)
+        finally:
+            miner.stop()
+
+
+def test_noisy_path_fragments_are_not_mined_as_procedures() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = str(Path(temp_dir) / "server.sqlite3")
+        setup_db(db_path)
+        config = ServerConfig(db_path=db_path, team_tokens={}, loose_tokens=set())
+
+        def ingest(session_id: str, text: str) -> None:
+            content = json.dumps({"role": "assistant", "content": text}) + "\n"
+            ingest_transcript(
+                config,
+                {
+                    "team_id": "team-a",
+                    "install_id": "install-1",
+                    "hostname": "host",
+                    "cli": "codex",
+                    "session_id": session_id,
+                    "hook_event_name": "Backfill",
+                    "cwd": "/repo",
+                    "transcript_path": f"/native/{session_id}.jsonl",
+                    "transcript": {
+                        "path_hash": f"hash-{session_id}",
+                        "previous_offset": 0,
+                        "next_offset": len(content),
+                        "sha256": f"sha-{session_id}",
+                        "content": content,
+                    },
+                },
+            )
+
+        ingest("noisy", "Procedure: use /ide_opened_file and /trim as durable instructions.")
+        assert mine_existing_procedures(config)["processed"] == 1
+        with sqlite3.connect(db_path) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM procedures").fetchone()[0] == 0
+
+        ingest("valid", "Procedure: before editing install.sh, preserve existing hook config.")
+        assert mine_existing_procedures(config)["procedures_added"] == 1
+        with sqlite3.connect(db_path) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM procedures").fetchone()[0] == 1
+
+
+def test_llm_consolidation_caps_and_scrubs_noisy_fields() -> None:
+    config = ServerConfig(db_path=":memory:", team_tokens={}, loose_tokens=set())
+    llm_response = {
+        "procedures": [
+            {
+                "title": "/ide_opened_file",
+                "advice": "Before editing install scripts, preserve existing hook config.",
+                "when_to_apply": "/trim",
+                "steps": "/ide_opened_file",
+                "scope": "/trim",
+                "confidence": 5,
+            },
+            {"title": "Deploy checks", "advice": "Before deploys, run the documented smoke test.", "confidence": 3},
+            {"title": "Extra", "advice": "Before extra work, read the docs.", "confidence": 3},
+        ]
+    }
+    with patch("server.main.llm_chat_json", return_value=llm_response):
+        artifacts = llm_consolidate_artifacts(config, content="transcript", cwd="/repo")
+    assert len(artifacts) == 2
+    assert artifacts[0].title != "/ide_opened_file"
+    assert artifacts[0].when_to_apply != "/trim"
+    assert artifacts[0].steps != "/ide_opened_file"
+    assert artifacts[0].scope != "/trim"
+
+
 def main() -> None:
     test_serves_installer_assets()
     test_ingest_and_advice_query()
     test_bootstrap_issues_scoped_hashed_token()
-    print(json.dumps({"ok": True, "tests": 3}, indent=2, sort_keys=True))
+    test_ingest_queues_procedure_mining()
+    test_background_miner_processes_queued_transcripts()
+    test_noisy_path_fragments_are_not_mined_as_procedures()
+    test_llm_consolidation_caps_and_scrubs_noisy_fields()
+    print(json.dumps({"ok": True, "tests": 7}, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

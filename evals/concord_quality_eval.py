@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from server.main import ServerConfig, ingest_transcript, query_advice, setup_db
+from server.main import ServerConfig, ingest_transcript, mine_existing_procedures, query_advice, setup_db
 
 
 TEAM_ID = "team-eval"
@@ -256,6 +256,7 @@ def run_eval() -> dict[str, int]:
                 loaded_cases = add_fixture(config, path)
                 fixture_cases += len(loaded_cases)
                 cases.extend(loaded_cases)
+        mine_existing_procedures(config)
 
         passed = 0
         by_category: dict[str, int] = {}

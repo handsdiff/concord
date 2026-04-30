@@ -7,6 +7,8 @@ import os
 import re
 import secrets
 import sqlite3
+import sys
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -154,6 +156,11 @@ NOISY_EXCERPT_FRAGMENTS = (
     "\\\"timestamp\\\"",
     "\\\"payload\\\"",
 )
+
+NOISY_PATH_FRAGMENTS = {
+    "/ide_opened_file",
+    "/trim",
+}
 
 RESOURCE_TERMS = (
     "artifact",
@@ -476,7 +483,6 @@ def ingest_transcript(config: ServerConfig, payload: dict[str, Any]) -> dict[str
     sha256 = require_str(transcript, "sha256")
     previous_offset = int(transcript.get("previous_offset", 0) or 0)
     next_offset = int(transcript.get("next_offset", 0) or 0)
-    source_delta_id = 0
     stored = False
     with connect(config.db_path) as conn:
         cursor = conn.execute(
@@ -505,20 +511,6 @@ def ingest_transcript(config: ServerConfig, payload: dict[str, Any]) -> dict[str
             ),
         )
         stored = cursor.rowcount == 1
-        if stored:
-            source_delta_id = int(cursor.lastrowid)
-    if stored:
-        with connect(config.db_path) as conn:
-            mine_procedures_for_delta(
-                conn,
-                config=config,
-                team_id=team_id,
-                source_delta_id=source_delta_id,
-                cli=payload.get("cli") if isinstance(payload.get("cli"), str) else None,
-                session_id=payload.get("session_id") if isinstance(payload.get("session_id"), str) else None,
-                cwd=payload.get("cwd") if isinstance(payload.get("cwd"), str) else None,
-                content=content,
-            )
     return {"ok": True, "stored": stored}
 
 
@@ -624,7 +616,7 @@ def transcript_line_role_and_text(line: str) -> tuple[str, str]:
     try:
         parsed = json.loads(stripped)
     except json.JSONDecodeError:
-        return "assistant", strip_extracted_text(stripped)
+        return "", ""
     if not isinstance(parsed, dict):
         return "", ""
     if parsed.get("type") == "event_msg":
@@ -655,9 +647,33 @@ def extract_paths(text: str) -> list[str]:
     paths: list[str] = []
     for match in re.findall(r"(?:\.\.?/|/)[A-Za-z0-9._~/-]+", text):
         item = match.rstrip(".,:;)\']}")
-        if item and item not in paths and "token" not in item.lower():
+        if (
+            item
+            and item.lower() not in NOISY_PATH_FRAGMENTS
+            and item not in paths
+            and "token" not in item.lower()
+        ):
             paths.append(item)
     return paths[:3]
+
+
+def has_noisy_path_fragment(text: str) -> bool:
+    lowered = text.lower()
+    for fragment in NOISY_PATH_FRAGMENTS:
+        if re.search(rf"(?<![a-z0-9_.-]){re.escape(fragment)}(?![a-z0-9_.-])", lowered):
+            return True
+    return False
+
+
+def procedure_text_noise(text: str) -> bool:
+    return extraction_noise(text) or noisy_excerpt(text) or has_noisy_path_fragment(text)
+
+
+def clean_artifact_field(value: Any, fallback: str, max_chars: int) -> str:
+    cleaned = clean_extracted_text(str(value or ""), max_chars=max_chars)
+    if not cleaned or procedure_text_noise(cleaned):
+        return fallback
+    return cleaned
 
 
 def title_from_text(text: str) -> str:
@@ -682,10 +698,10 @@ def artifact_from_advice(
     confidence: int,
 ) -> ProcedureArtifact | None:
     advice = clean_extracted_text(advice, max_chars=650)
-    if extraction_noise(advice):
+    if procedure_text_noise(advice):
         return None
-    when = compact_line(" ".join(part for part in (trigger_text, evidence) if part), max_chars=500)
-    if not when:
+    when = clean_extracted_text(" ".join(part for part in (trigger_text, evidence) if part), max_chars=500)
+    if not when or procedure_text_noise(when):
         when = advice
     return ProcedureArtifact(
         title=title_from_text(advice),
@@ -833,7 +849,7 @@ def llm_consolidate_artifacts(
     if not parsed or not isinstance(parsed.get("procedures"), list):
         return []
     artifacts: list[ProcedureArtifact] = []
-    for item in parsed["procedures"][:4]:
+    for item in parsed["procedures"][:2]:
         if not isinstance(item, dict):
             continue
         artifact = artifact_from_advice(
@@ -844,15 +860,20 @@ def llm_consolidate_artifacts(
             confidence=bounded_confidence(item.get("confidence")),
         )
         if artifact:
+            title = clean_artifact_field(item.get("title"), artifact.title, 80)
+            when_to_apply = clean_artifact_field(item.get("when_to_apply"), artifact.when_to_apply, 500)
+            when_not_to_apply = clean_artifact_field(item.get("when_not_to_apply"), artifact.when_not_to_apply, 500)
+            steps = clean_artifact_field(item.get("steps"), artifact.steps, 700)
+            scope = clean_artifact_field(item.get("scope"), artifact.scope, 240)
             artifacts.append(
                 ProcedureArtifact(
-                    title=compact_line(str(item.get("title") or artifact.title), max_chars=80),
+                    title=title,
                     advice=artifact.advice,
-                    when_to_apply=compact_line(str(item.get("when_to_apply") or artifact.when_to_apply), max_chars=500),
-                    when_not_to_apply=compact_line(str(item.get("when_not_to_apply") or artifact.when_not_to_apply), max_chars=500),
-                    steps=compact_line(str(item.get("steps") or artifact.steps), max_chars=700),
+                    when_to_apply=when_to_apply,
+                    when_not_to_apply=when_not_to_apply,
+                    steps=steps,
                     evidence=artifact.evidence,
-                    scope=compact_line(str(item.get("scope") or artifact.scope), max_chars=240),
+                    scope=scope,
                     confidence=artifact.confidence,
                 )
             )
@@ -871,7 +892,7 @@ def insert_procedure(
     artifact: ProcedureArtifact,
 ) -> bool:
     procedure = clean_extracted_text(artifact.advice, max_chars=650)
-    if extraction_noise(procedure):
+    if procedure_text_noise(procedure):
         return False
     term_text = " ".join(
         part
@@ -983,13 +1004,21 @@ def mine_procedures_for_delta(
     return added
 
 
-def mine_existing_procedures(config: ServerConfig, team_id: str | None = None, limit: int = 0) -> dict[str, int]:
+def mine_existing_procedures(
+    config: ServerConfig,
+    team_id: str | None = None,
+    limit: int = 0,
+    prefer_recent: bool = False,
+) -> dict[str, int]:
     params: list[Any] = []
     team_clause = ""
     if team_id:
         team_clause = "AND team_id = ?"
         params.append(team_id)
     limit_clause = "" if limit <= 0 else f"LIMIT {int(limit)}"
+    order_clause = "id ASC"
+    if prefer_recent:
+        order_clause = "CASE WHEN hook_event_name = 'Backfill' THEN 1 ELSE 0 END, id DESC"
     with connect(config.db_path) as conn:
         rows = conn.execute(
             f"""
@@ -997,7 +1026,7 @@ def mine_existing_procedures(config: ServerConfig, team_id: str | None = None, l
             FROM transcript_deltas
             WHERE id NOT IN (SELECT transcript_delta_id FROM procedure_sources)
             {team_clause}
-            ORDER BY id ASC
+            ORDER BY {order_clause}
             {limit_clause}
             """,
             params,
@@ -1015,6 +1044,32 @@ def mine_existing_procedures(config: ServerConfig, team_id: str | None = None, l
                 content=str(row["content"]),
             )
     return {"processed": len(rows), "procedures_added": added}
+
+
+class ProcedureMiner:
+    def __init__(self, config: ServerConfig, *, batch_size: int = 10, poll_seconds: float = 1.0):
+        self.config = config
+        self.batch_size = max(1, int(batch_size))
+        self.poll_seconds = max(0.05, float(poll_seconds))
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="concord-procedure-miner", daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self, timeout: float = 5.0) -> None:
+        self._stop.set()
+        self._thread.join(timeout=timeout)
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                result = mine_existing_procedures(self.config, limit=self.batch_size, prefer_recent=True)
+                if int(result["processed"]) == 0:
+                    self._stop.wait(self.poll_seconds)
+            except Exception as exc:
+                print(f"concord procedure miner warning: {type(exc).__name__}: {exc}", file=sys.stderr)
+                self._stop.wait(self.poll_seconds)
 
 
 def row_text(row: sqlite3.Row, key: str) -> str:
@@ -1044,7 +1099,7 @@ def procedure_hit_score(prompt: str, transcript_tail: str, row: sqlite3.Row, cwd
     if not current_terms:
         return False, 0
     advice = clean_extracted_text(str(row["procedure"]), max_chars=650)
-    if noisy_excerpt(advice):
+    if procedure_text_noise(advice):
         return False, 0
     apply_text = " ".join(
         part
@@ -1553,6 +1608,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mine-procedures", action="store_true", help="mine procedures from existing transcript deltas and exit")
     parser.add_argument("--mine-team-id", default=os.environ.get("CONCORD_MINE_TEAM_ID", ""))
     parser.add_argument("--mine-limit", type=int, default=int(os.environ.get("CONCORD_MINE_LIMIT", "0")))
+    parser.add_argument("--no-background-miner", action="store_true", default=os.environ.get("CONCORD_NO_BACKGROUND_MINER", "") == "1")
+    parser.add_argument("--miner-batch-size", type=int, default=int(os.environ.get("CONCORD_MINER_BATCH_SIZE", "10")))
+    parser.add_argument("--miner-poll-seconds", type=float, default=float(os.environ.get("CONCORD_MINER_POLL_SECONDS", "1")))
     return parser
 
 
@@ -1564,8 +1622,16 @@ def main() -> None:
         print(json.dumps(mine_existing_procedures(config, args.mine_team_id or None, args.mine_limit), sort_keys=True))
         return
     server = ConcordHTTPServer((args.host, args.port), config)
+    miner = None
+    if not args.no_background_miner:
+        miner = ProcedureMiner(config, batch_size=args.miner_batch_size, poll_seconds=args.miner_poll_seconds)
+        miner.start()
     print(f"Concord server listening on http://{args.host}:{args.port}")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        if miner:
+            miner.stop()
 
 
 if __name__ == "__main__":

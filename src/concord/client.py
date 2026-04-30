@@ -34,7 +34,7 @@ class ConcordClient:
             raise ConcordClientError("CONCORD_API_TOKEN is not configured")
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "concord-client/0.1.4",
+            "User-Agent": "concord-client/0.1.5",
         }
         if self.config.api_token:
             headers["Authorization"] = f"Bearer {self.config.api_token}"
